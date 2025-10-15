@@ -1,141 +1,129 @@
-type StockfishCallback = (message: string) => void;
-
 class StockfishService {
-  private worker: Worker | null = null;
+  private worker!: Worker;
+  private onMessageCallback: ((message: string) => void) | null = null;
   private isReady = false;
-  private readyCallbacks: (() => void)[] = [];
-  private messageCallback: StockfishCallback | null = null;
+  private pending: string[] = [];
+  private readyTimer: number | null = null;
+  private attemptIndex = 0;
+  private readonly assets: Array<{ js: string; wasm: string; label: string }>; 
 
-  initialize(): Promise<void> {
-    if (this.worker) {
-      return Promise.resolve();
-    }
+  constructor() {
+    // Available engine variants to try (fallback order)
+    // Static assets served from public/engine (Plan C)
+    this.assets = [
+      { js: '/engine/stockfish-wrapper-lite-single.js', wasm: '', label: 'lite-single' },
+      { js: '/engine/stockfish-wrapper-lite.js', wasm: '', label: 'lite' },
+      { js: '/engine/stockfish-wrapper-asm.js', wasm: '', label: 'asm' },
+    ];
 
-    return new Promise((resolve) => {
-      this.worker = new Worker('/stockfish-worker.js');
+    this.initWorker();
+  }
 
-      this.worker.onmessage = (e) => {
-        const { type, payload } = e.data;
-
-        if (type === 'ready') {
-          this.isReady = false;
-          this.sendCommand('uci');
-        } else if (type === 'output') {
-          if (payload === 'uciok') {
-            this.sendCommand('isready');
-          } else if (payload === 'readyok') {
-            this.isReady = true;
-            this.readyCallbacks.forEach(cb => cb());
-            this.readyCallbacks = [];
-            resolve();
-          }
-
-          if (this.messageCallback) {
-            this.messageCallback(payload);
-          }
-        }
-      };
-
-      this.worker.postMessage({ type: 'init' });
+  private initWorker() {
+    this.isReady = false;
+    // Use the NPM package assets directly via classic Worker and pass the wasm URL via hash
+    const asset = this.assets[this.attemptIndex];
+    const workerJs = asset.js;
+    const workerUrlWithHash = workerJs; // wrapper handles wasm URL and hash
+    console.debug('[Stockfish] creating worker', {
+      attempt: this.attemptIndex + 1,
+      variant: asset.label,
+      workerUrl: workerJs,
+      wasmUrl: '(via wrapper)',
+      fullUrl: workerUrlWithHash,
     });
+    try {
+      this.worker = new Worker(workerUrlWithHash, { type: 'classic' });
+    } catch (err) {
+      console.error('[Stockfish] Worker construction failed:', err);
+      this.tryFallback();
+      return;
+    }
+
+    this.worker.onerror = (ev: ErrorEvent) => {
+      console.error('[Stockfish:worker error]', ev.message, ev);
+    };
+    // When structured clone fails
+    (this.worker as unknown as { onmessageerror?: (ev: MessageEvent) => void }).onmessageerror = (ev: MessageEvent) => {
+      console.error('[Stockfish:messageerror]', ev);
+    };
+
+    this.worker.onmessage = (e: MessageEvent) => {
+      const text = typeof e.data === 'string' ? e.data : String(e.data ?? '');
+      console.debug('[Stockfish:onmessage]', text);
+      // UCI handshake handling
+      if (text.includes('uciok')) {
+        console.debug('[Stockfish] uciok received -> isready');
+        if (this.readyTimer) {
+          clearTimeout(this.readyTimer);
+          this.readyTimer = null;
+        }
+        this.postRaw('isready');
+      } else if (text.includes('readyok')) {
+        console.debug('[Stockfish] readyok received');
+        if (this.readyTimer) {
+          clearTimeout(this.readyTimer);
+          this.readyTimer = null;
+        }
+        this.isReady = true;
+        // flush queued commands
+        while (this.pending.length) {
+          const cmd = this.pending.shift()!;
+          console.debug('[Stockfish] flushing queued cmd:', cmd);
+          this.postRaw(cmd);
+        }
+      }
+      if (this.onMessageCallback) this.onMessageCallback(text);
+    };
+
+    console.debug('[Stockfish] init -> uci');
+    this.postRaw('uci');
+
+    // If we don't see any handshake within a few seconds, try another variant
+    this.readyTimer = window.setTimeout(() => {
+      console.warn('[Stockfish] No uciok/readyok within timeout; attempting fallback');
+      try {
+        this.worker.terminate();
+      } catch {}
+      this.tryFallback();
+    }, 5000);
   }
 
-  private sendCommand(command: string): void {
-    if (this.worker) {
-      this.worker.postMessage({ type: 'command', payload: command });
+  private tryFallback() {
+    this.attemptIndex += 1;
+    if (this.attemptIndex < this.assets.length) {
+      this.initWorker();
+    } else {
+      console.error('[Stockfish] All worker variants failed to initialize.');
     }
   }
 
-  private waitForReady(): Promise<void> {
+  public onMessage(callback: (message: string) => void) {
+    this.onMessageCallback = callback;
+  }
+
+  private postRaw(command: string) {
+    console.debug('[Stockfish:post]', command);
+    this.worker.postMessage(command);
+  }
+
+  public sendCommand(command: string) {
     if (this.isReady) {
-      return Promise.resolve();
+      console.debug('[Stockfish:send] immediate', command);
+      this.postRaw(command);
+    } else {
+      console.debug('[Stockfish:send] queued (not ready)', command);
+      this.pending.push(command);
     }
-
-    return new Promise((resolve) => {
-      this.readyCallbacks.push(resolve);
-    });
   }
 
-  setMessageCallback(callback: StockfishCallback): void {
-    this.messageCallback = callback;
-  }
-
-  clearMessageCallback(): void {
-    this.messageCallback = null;
-  }
-
-  async analyzePosition(fen: string, depth: number = 15): Promise<{ evaluation: string; bestMove: string }> {
-    await this.waitForReady();
-
-    return new Promise((resolve) => {
-      let evaluation = '0.00';
-      let bestMove = '';
-
-      const handler = (message: string) => {
-        if (message.startsWith('info') && message.includes('score')) {
-          const scoreMatch = message.match(/score (cp|mate) (-?\d+)/);
-          if (scoreMatch) {
-            const [, type, value] = scoreMatch;
-            if (type === 'mate') {
-              evaluation = `Mate in ${Math.abs(parseInt(value))}`;
-            } else {
-              const centipawns = parseInt(value);
-              evaluation = (centipawns / 100).toFixed(2);
-              if (centipawns > 0) {
-                evaluation = '+' + evaluation;
-              }
-            }
-          }
-        }
-
-        if (message.startsWith('bestmove')) {
-          const moveMatch = message.match(/bestmove (\w+)/);
-          if (moveMatch) {
-            bestMove = moveMatch[1];
-          }
-          this.clearMessageCallback();
-          resolve({ evaluation, bestMove });
-        }
-      };
-
-      this.setMessageCallback(handler);
-      this.sendCommand(`position fen ${fen}`);
-      this.sendCommand(`go depth ${depth}`);
-    });
-  }
-
-  async getEvaluation(fen: string, depth: number = 12): Promise<number> {
-    await this.waitForReady();
-
-    return new Promise((resolve) => {
-      let evaluation = 0;
-
-      const handler = (message: string) => {
-        if (message.startsWith('info') && message.includes('score cp')) {
-          const scoreMatch = message.match(/score cp (-?\d+)/);
-          if (scoreMatch) {
-            evaluation = parseInt(scoreMatch[1]);
-          }
-        }
-
-        if (message.startsWith('bestmove')) {
-          this.clearMessageCallback();
-          resolve(evaluation);
-        }
-      };
-
-      this.setMessageCallback(handler);
-      this.sendCommand(`position fen ${fen}`);
-      this.sendCommand(`go depth ${depth}`);
-    });
-  }
-
-  terminate(): void {
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-      this.isReady = false;
-    }
+  public analyzePosition(fen: string, depth: number = 15) {
+    // stop any previous search and start fresh
+    console.debug('[Stockfish] analyzePosition', { fen, depth });
+    this.sendCommand('stop');
+    this.sendCommand('ucinewgame');
+    this.sendCommand(`position fen ${fen}`);
+    this.sendCommand(`go depth ${depth}`);
   }
 }
 

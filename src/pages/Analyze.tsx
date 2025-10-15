@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Chess } from 'chess.js';
 import {
   Home,
   ChevronLeft,

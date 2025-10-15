@@ -10,9 +10,9 @@ export default function ChessBoard({ fen, size = 300 }: ChessBoardProps) {
   const board = chess.board();
   const squareSize = size / 8;
 
-  const pieceSymbols: Record<string, string> = {
-    'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛', 'k': '♚',
-    'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
+  const pieceSymbols: Record<'w' | 'b', Record<string, string>> = {
+    w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕', k: '♔' },
+    b: { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚' },
   };
 
   return (
@@ -24,8 +24,8 @@ export default function ChessBoard({ fen, size = 300 }: ChessBoardProps) {
         <div key={i} className="flex">
           {row.map((square, j) => {
             const isLight = (i + j) % 2 === 0;
-            const piece = square ? pieceSymbols[square.type === square.type.toUpperCase() ? square.type.toUpperCase() : square.type] : null;
             const isWhitePiece = square?.color === 'w';
+            const piece = square ? pieceSymbols[square.color][square.type] : null;
 
             return (
               <div
@@ -40,7 +40,15 @@ export default function ChessBoard({ fen, size = 300 }: ChessBoardProps) {
                 }}
               >
                 {piece && (
-                  <span className={isWhitePiece ? 'text-white drop-shadow-lg' : 'text-black'}>
+                  <span
+                    className={isWhitePiece ? 'drop-shadow-lg' : ''}
+                    style={{
+                      // Prefer monochrome symbol fonts to avoid colored emoji rendering (blue pawns)
+                      fontFamily:
+                        '"Segoe UI Symbol", "DejaVu Sans", Symbola, "Noto Sans Symbols2", "Arial Unicode MS", sans-serif',
+                      color: isWhitePiece ? '#ffffff' : '#111827', // white or slate-900 for black
+                    }}
+                  >
                     {piece}
                   </span>
                 )}

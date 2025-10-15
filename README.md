@@ -197,5 +197,153 @@ The project structure is designed to support:
 - Code quality with ESLint and TypeScript
 
 ---
+Real-time chess recording and analysis app built with React, TypeScript, Vite, Tailwind, and Redux Toolkit. It renders a camera feed with draggable board markers, shows a chessboard from FEN, and integrates the Stockfish engine for a “Mentor” best-move suggestion.
 
-*This project represents a foundation for advanced chess game recording and analysis, with room for expansion into AI-powered features and real-time game processing.*
+This README documents the recent changes, how to run locally, how the Stockfish engine is wired (including static asset setup), and the current known issue we’re stuck on.
+
+## What changed recently
+
+- Camera feed reliability
+  - Implemented getUserMedia in `VideoCanvas` with a safe init sequence (wait for metadata before play).
+  - Separated effects so dragging corner markers no longer re-initializes the video.
+  - Kept overlays interactive while the canvas remains pointer-events: none.
+
+- Chessboard rendering
+  - Forced monochrome Unicode glyphs for pieces to avoid emoji fallback (blue pawns). Now white/black colors are always correct in `ChessBoard`.
+
+- PGN formatting
+  - Normalized manual move logging to a compact SAN-like sequence without headers/FEN spam.
+
+- Mentor engine integration (Stockfish)
+  - Removed the legacy worker and custom analysis slice; created a clean `stockfishService.ts` that manages the UCI handshake, queues commands until ready, and provides an `analyzePosition(fen, depth)` API.
+  - Switched to the official `stockfish` NPM package engine binaries, then settled on serving the engine JS/WASM as static files from `public/engine` to avoid dev bundler URL quirks.
+  - Added robust logging (console.debug) for the full handshake and command flow.
+
+- Static engine setup (Plan C)
+  - Copy script `scripts/copy-stockfish.cjs` to copy the engine binaries from `node_modules/stockfish/src` to `public/engine`.
+  - Added tiny wrapper workers in `public/engine/` that call `importScripts` with the correct `#<wasm>,worker` URL format:
+    - `stockfish-wrapper-lite-single.js`
+    - `stockfish-wrapper-lite.js`
+    - `stockfish-wrapper-asm.js` (last-resort fallback)
+  - Updated `stockfishService.ts` to instantiate a Worker from those wrapper scripts.
+
+- Dev server COOP/COEP
+  - Added headers in `vite.config.ts` to enable features that may depend on cross-origin isolation.
+
+## Project structure (relevant parts)
+
+```
+public/
+  engine/
+    stockfish-17.1-lite-single-03e3232.js
+    stockfish-17.1-lite-single-03e3232.wasm
+    stockfish-17.1-lite-51f59da.js
+    stockfish-17.1-lite-51f59da.wasm
+    stockfish-17.1-asm-341ff22.js
+    stockfish-wrapper-asm.js
+    stockfish-wrapper-lite-single.js
+    stockfish-wrapper-lite.js
+scripts/
+  copy-stockfish.cjs
+src/
+  components/
+    ChessBoard.tsx
+    MentorPanel.tsx
+    VideoCanvas.tsx
+    Sidebar.tsx
+  services/
+    stockfishService.ts
+  store/
+    gameSlice.ts
+    cornersSlice.ts
+    uiSlice.ts
+  pages/
+    Home.tsx
+    Record.tsx
+    Upload.tsx
+    Analyze.tsx
+```
+
+## How to run locally
+
+Prerequisites:
+- Node.js 18+ recommended
+- A modern browser (camera permission for Record page)
+
+Setup:
+1) Install dependencies
+   - npm install
+
+2) Copy Stockfish engine assets into `public/engine` (one-time or after reinstalls)
+   - npm run copy:stockfish
+
+3) Start the dev server
+   - npm run dev
+
+4) Open the app
+   - Navigate to the URL printed by Vite (typically http://localhost:5173)
+
+Notes:
+- If the wrappers or engine files are missing under `public/engine`, run the copy step again, then refresh.
+- The dev server sets COOP/COEP headers via `vite.config.ts`.
+
+## How the Stockfish integration works
+
+- We use the official `stockfish` NPM package as the source of engine binaries.
+- We serve the engine JS/WASM as static files from `public/engine` to avoid development-time URL resolution issues.
+- Small wrapper worker scripts in `public/engine` call `importScripts()` with the engine JS and pass the WASM URL via the `#<encoded-wasm-url>,worker` suffix (the loader inside Stockfish expects this format).
+- `src/services/stockfishService.ts` creates the Worker from the wrapper URL, sends `uci`, waits for `uciok` → sends `isready`, waits for `readyok`, then flushes any queued commands.
+- `analyzePosition(fen, depth)` sends `stop`, `ucinewgame`, `position fen ...`, `go depth ...`.
+- `src/components/MentorPanel.tsx` subscribes to engine messages, parses `info`/`bestmove`, and displays the suggestion.
+
+## Commands
+
+- Development:
+  - npm run dev
+- Linting:
+  - npm run lint
+- Type checking:
+  - npm run typecheck
+- Copy engine assets (required before dev/build if missing):
+  - npm run copy:stockfish
+
+## Troubleshooting & Known issue
+
+Symptoms we’re seeing right now:
+- Console shows:
+  - "[Stockfish] init -> uci"
+  - But no subsequent "uciok" / "readyok" messages
+  - After 5s, a warning: "No uciok/readyok within timeout; attempting fallback"
+  - It cycles through wrappers (lite-single → lite → asm) and ultimately logs "All worker variants failed to initialize."
+
+What this means:
+- The worker script is created, but the engine inside the worker isn’t finishing its initialization. Typically this happens if the engine JS fails to load the WASM (network path, MIME type, or cross-origin isolation) or the worker can’t fetch the asset due to environment restrictions.
+
+What we’ve done to mitigate:
+- Serve engine assets from `public/engine` so they’re requested from the same origin.
+- Use wrapper workers that call `importScripts()` with an absolute WASM URL.
+- Added COOP/COEP headers in dev for stricter environments.
+- Implemented a fallback chain (lite-single → lite → asm) with a 5s watchdog.
+
+Next steps you can try on a fresh machine:
+1) Ensure the engine files exist under `public/engine` (run `npm run copy:stockfish`).
+2) Start dev server and check Network tab:
+   - /engine/stockfish-wrapper-*.js must load (status 200)
+   - /engine/stockfish-*.js and /engine/stockfish-*.wasm must load (status 200, correct MIME types)
+3) Open DevTools Console at Verbose level; look for "uciok" after "[Stockfish] init -> uci".
+4) If still no "uciok": verify your browser allows cross-origin isolated features with the current headers, or try another browser.
+
+If you clone this repo elsewhere
+1) npm install
+2) npm run copy:stockfish
+3) npm run dev
+4) Verify public/engine contains engine files; reload if needed.
+
+## Current status (Oct 16, 2025)
+
+- App builds and runs.
+- Camera feed works and chessboard renders correctly with monochrome piece glyphs.
+- Mentor UI is wired and logs engine output lines.
+- Blocker: Engine handshake does not complete (no "uciok/readyok"), so “Best Move” remains stuck on “Thinking…”. The code includes logging and fallbacks to aid further debugging.
+
+If you encounter different behavior, please capture the first 15–20 "[Stockfish] ..." console lines and the Network tab entries for `/engine/*` requests and open an issue.

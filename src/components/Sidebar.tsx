@@ -11,17 +11,13 @@ import {
   Crosshair,
   Wand2,
   Send,
-  Brain,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { togglePlaying, setStatusMessage } from '../store/uiSlice';
 import { resetGame, setGameState } from '../store/gameSlice';
 import { resetCorners } from '../store/cornersSlice';
-import { toggleMentor } from '../store/analysisSlice';
 import ChessBoard from './ChessBoard';
-import EvaluationBar from './EvaluationBar';
-import MentorSuggestion from './MentorSuggestion';
-import MoveFeedback from './MoveFeedback';
+import { MentorPanel } from './MentorPanel';
 
 const mockMoves = [
   'e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3', 'Nf6', 'Nc3', 'd6'
@@ -32,9 +28,7 @@ export default function Sidebar() {
   const dispatch = useAppDispatch();
   const { isPlaying, statusMessage } = useAppSelector((state) => state.ui);
   const { fen, pgn } = useAppSelector((state) => state.game);
-  const { evaluation, bestMove, lastMoveAnalysis, status, mentorEnabled } = useAppSelector(
-    (state) => state.analysis
-  );
+  // Mentor analysis handled by MentorPanel; no state needed here
 
   const [manualMove, setManualMove] = useState('');
 
@@ -91,7 +85,19 @@ export default function Sidebar() {
 
       if (result) {
         const newFen = chess.fen();
-        const newPgn = chess.pgn();
+        // Build PGN text ourselves to avoid headers/FEN blocks
+        const san = result.san; // e.g. e4, Nf3, ...
+        let newPgn = pgn || '';
+        // Determine if we need to prepend move number (when it's White's move that just played)
+        const moveNumber = chess.history().length % 2 === 1 ? Math.ceil(chess.history().length / 2) : Math.ceil(chess.history().length / 2);
+        const isWhiteMove = result.color === 'w';
+        if (!newPgn) {
+          newPgn = isWhiteMove ? `${moveNumber}. ${san}` : `${moveNumber}... ${san}`;
+        } else {
+          // add space and appropriate move number if black starts a new pair
+          const needsNumber = !isWhiteMove;
+          newPgn = `${newPgn} ${needsNumber ? `${moveNumber}... ` : ''}${san}`.trim();
+        }
 
         dispatch(setGameState({ fen: newFen, pgn: newPgn }));
         dispatch(setStatusMessage(`Manual move: ${result.san}`));
@@ -110,10 +116,7 @@ export default function Sidebar() {
     }
   };
 
-  const handleToggleMentor = () => {
-    dispatch(toggleMentor());
-    dispatch(setStatusMessage(mentorEnabled ? 'Mentor disabled' : 'Mentor enabled'));
-  };
+  // Mentor toggle removed in new approach
 
   return (
     <div className="w-80 bg-slate-800 border-l border-slate-700 flex flex-col h-full overflow-y-auto">
@@ -182,28 +185,8 @@ export default function Sidebar() {
       </div>
 
       <div className="p-4 border-b border-slate-700">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-300">Chess Mentor</h3>
-          <button
-            onClick={handleToggleMentor}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
-              mentorEnabled
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
-            }`}
-          >
-            <Brain className="w-3 h-3" />
-            {mentorEnabled ? 'ON' : 'OFF'}
-          </button>
-        </div>
-
-        {mentorEnabled && (
-          <div className="space-y-3">
-            <EvaluationBar evaluation={evaluation} />
-            <MoveFeedback moveQuality={lastMoveAnalysis} />
-            <MentorSuggestion bestMove={bestMove} isAnalyzing={status === 'analyzing'} />
-          </div>
-        )}
+        <h3 className="text-sm font-semibold text-slate-300 mb-3">Chess Mentor</h3>
+        <MentorPanel />
       </div>
 
       <div className="p-4 border-b border-slate-700">
