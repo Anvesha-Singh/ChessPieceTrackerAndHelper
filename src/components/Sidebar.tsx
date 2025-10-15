@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chess } from 'chess.js';
 import {
@@ -9,12 +10,18 @@ import {
   Camera,
   Crosshair,
   Wand2,
+  Send,
+  Brain,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { togglePlaying, setStatusMessage } from '../store/uiSlice';
 import { resetGame, setGameState } from '../store/gameSlice';
 import { resetCorners } from '../store/cornersSlice';
+import { toggleMentor } from '../store/analysisSlice';
 import ChessBoard from './ChessBoard';
+import EvaluationBar from './EvaluationBar';
+import MentorSuggestion from './MentorSuggestion';
+import MoveFeedback from './MoveFeedback';
 
 const mockMoves = [
   'e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3', 'Nf6', 'Nc3', 'd6'
@@ -25,6 +32,11 @@ export default function Sidebar() {
   const dispatch = useAppDispatch();
   const { isPlaying, statusMessage } = useAppSelector((state) => state.ui);
   const { fen, pgn } = useAppSelector((state) => state.game);
+  const { evaluation, bestMove, lastMoveAnalysis, status, mentorEnabled } = useAppSelector(
+    (state) => state.analysis
+  );
+
+  const [manualMove, setManualMove] = useState('');
 
   const handlePlayPause = () => {
     dispatch(togglePlaying());
@@ -67,6 +79,40 @@ export default function Sidebar() {
       navigator.clipboard.writeText(pgn);
       dispatch(setStatusMessage('PGN copied to clipboard'));
     }
+  };
+
+  const handleManualMove = () => {
+    if (!manualMove.trim()) return;
+
+    const chess = new Chess(fen);
+
+    try {
+      const result = chess.move(manualMove.trim());
+
+      if (result) {
+        const newFen = chess.fen();
+        const newPgn = chess.pgn();
+
+        dispatch(setGameState({ fen: newFen, pgn: newPgn }));
+        dispatch(setStatusMessage(`Manual move: ${result.san}`));
+        setManualMove('');
+      } else {
+        dispatch(setStatusMessage('Invalid move - please try again'));
+        setTimeout(() => {
+          dispatch(setStatusMessage('Ready to record'));
+        }, 2000);
+      }
+    } catch (error) {
+      dispatch(setStatusMessage('Invalid move - please try again'));
+      setTimeout(() => {
+        dispatch(setStatusMessage('Ready to record'));
+      }, 2000);
+    }
+  };
+
+  const handleToggleMentor = () => {
+    dispatch(toggleMentor());
+    dispatch(setStatusMessage(mentorEnabled ? 'Mentor disabled' : 'Mentor enabled'));
   };
 
   return (
@@ -132,6 +178,51 @@ export default function Sidebar() {
         <h3 className="text-sm font-semibold text-slate-300 mb-3">Current Position</h3>
         <div className="flex justify-center">
           <ChessBoard fen={fen} size={240} />
+        </div>
+      </div>
+
+      <div className="p-4 border-b border-slate-700">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-300">Chess Mentor</h3>
+          <button
+            onClick={handleToggleMentor}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
+              mentorEnabled
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-slate-700 hover:bg-slate-600 text-slate-400'
+            }`}
+          >
+            <Brain className="w-3 h-3" />
+            {mentorEnabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        {mentorEnabled && (
+          <div className="space-y-3">
+            <EvaluationBar evaluation={evaluation} />
+            <MoveFeedback moveQuality={lastMoveAnalysis} />
+            <MentorSuggestion bestMove={bestMove} isAnalyzing={status === 'analyzing'} />
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 border-b border-slate-700">
+        <h3 className="text-sm font-semibold text-slate-300 mb-3">Manual Move</h3>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={manualMove}
+            onChange={(e) => setManualMove(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleManualMove()}
+            placeholder="e.g., e4, Nf3"
+            className="flex-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500"
+          />
+          <button
+            onClick={handleManualMove}
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded transition"
+          >
+            <Send className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
