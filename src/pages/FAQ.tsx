@@ -9,8 +9,8 @@ interface FAQItem {
 
 const faqs: FAQItem[] = [
   {
-    question: 'How does Camera Chess work?',
-    answer: 'Camera Chess uses computer vision and machine learning to detect chess moves in real-time from your camera feed. Simply point your camera at your chess board, calibrate the corners, and start playing. The system will automatically detect and record each move.',
+    question: 'How does ChessMaster work?',
+    answer: 'ChessMaster uses computer vision and machine learning to detect chess moves in real-time from your camera feed. Simply point your camera at your chess board, calibrate the corners, and start playing. The system will automatically detect and record each move.',
   },
   {
     question: 'What equipment do I need?',
@@ -31,14 +31,6 @@ const faqs: FAQItem[] = [
   {
     question: 'Can I export my games?',
     answer: 'Yes, you can export your games in standard PGN (Portable Game Notation) format, which is compatible with all major chess platforms and software. Use the "Copy PGN" button to copy the game notation to your clipboard.',
-  },
-  {
-    question: 'Is my game data stored?',
-    answer: 'Your game data is stored securely in the cloud, allowing you to access your games from any device. You can also choose to save games locally by exporting the PGN file.',
-  },
-  {
-    question: 'Do I need to create an account?',
-    answer: 'You can use basic features without an account, but creating an account (via Lichess OAuth) allows you to save and access your games across devices, track your progress, and access advanced analytics.',
   },
 ];
 

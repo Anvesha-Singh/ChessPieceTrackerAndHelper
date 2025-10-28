@@ -287,14 +287,17 @@ Notes:
 - If the wrappers or engine files are missing under `public/engine`, run the copy step again, then refresh.
 - The dev server sets COOP/COEP headers via `vite.config.ts`.
 
-## How the Stockfish integration works
+## How the Mentor analysis works (Cloud Eval)
 
-- We use the official `stockfish` NPM package as the source of engine binaries.
-- We serve the engine JS/WASM as static files from `public/engine` to avoid development-time URL resolution issues.
-- Small wrapper worker scripts in `public/engine` call `importScripts()` with the engine JS and pass the WASM URL via the `#<encoded-wasm-url>,worker` suffix (the loader inside Stockfish expects this format).
-- `src/services/stockfishService.ts` creates the Worker from the wrapper URL, sends `uci`, waits for `uciok` → sends `isready`, waits for `readyok`, then flushes any queued commands.
-- `analyzePosition(fen, depth)` sends `stop`, `ucinewgame`, `position fen ...`, `go depth ...`.
-- `src/components/MentorPanel.tsx` subscribes to engine messages, parses `info`/`bestmove`, and displays the suggestion.
+- We query Lichess Cloud Eval directly from the browser: `https://lichess.org/api/cloud-eval?fen=...&multiPv=N`.
+- No local engine or worker is required anymore; this removes setup complexity.
+- `src/services/cloudEvalService.ts` fetches the JSON (depth, knodes, pvs).
+- `src/components/MentorPanel.tsx` renders:
+  - Best move (SAN with UCI in parentheses)
+  - Evaluation (you can choose White perspective or Side-to-move)
+  - Depth and kNodes
+  - Top PV lines (in SAN), length configurable
+  - Controls: Perspective, Lines (MultiPV), and Preview length
 
 ## Commands
 
@@ -304,46 +307,21 @@ Notes:
   - npm run lint
 - Type checking:
   - npm run typecheck
-- Copy engine assets (required before dev/build if missing):
-  - npm run copy:stockfish
+  
 
 ## Troubleshooting & Known issue
 
-Symptoms we’re seeing right now:
-- Console shows:
-  - "[Stockfish] init -> uci"
-  - But no subsequent "uciok" / "readyok" messages
-  - After 5s, a warning: "No uciok/readyok within timeout; attempting fallback"
-  - It cycles through wrappers (lite-single → lite → asm) and ultimately logs "All worker variants failed to initialize."
+Current situation and why we changed:
+- We previously attempted a local Stockfish worker; on this machine it never emitted `uciok/readyok` (likely WASM load/env restrictions). To avoid this friction, we now rely solely on Lichess Cloud Eval.
+- If you still see unexpected values, remember cloud eval is cached and may differ slightly across times and depths. You can adjust the number of lines (MultiPV) and the preview length from the Mentor controls.
 
-What this means:
-- The worker script is created, but the engine inside the worker isn’t finishing its initialization. Typically this happens if the engine JS fails to load the WASM (network path, MIME type, or cross-origin isolation) or the worker can’t fetch the asset due to environment restrictions.
-
-What we’ve done to mitigate:
-- Serve engine assets from `public/engine` so they’re requested from the same origin.
-- Use wrapper workers that call `importScripts()` with an absolute WASM URL.
-- Added COOP/COEP headers in dev for stricter environments.
-- Implemented a fallback chain (lite-single → lite → asm) with a 5s watchdog.
-
-Next steps you can try on a fresh machine:
-1) Ensure the engine files exist under `public/engine` (run `npm run copy:stockfish`).
-2) Start dev server and check Network tab:
-   - /engine/stockfish-wrapper-*.js must load (status 200)
-   - /engine/stockfish-*.js and /engine/stockfish-*.wasm must load (status 200, correct MIME types)
-3) Open DevTools Console at Verbose level; look for "uciok" after "[Stockfish] init -> uci".
-4) If still no "uciok": verify your browser allows cross-origin isolated features with the current headers, or try another browser.
-
-If you clone this repo elsewhere
-1) npm install
-2) npm run copy:stockfish
-3) npm run dev
-4) Verify public/engine contains engine files; reload if needed.
-
-## Current status (Oct 16, 2025)
+## Current status (Oct 29, 2025)
 
 - App builds and runs.
 - Camera feed works and chessboard renders correctly with monochrome piece glyphs.
-- Mentor UI is wired and logs engine output lines.
-- Blocker: Engine handshake does not complete (no "uciok/readyok"), so “Best Move” remains stuck on “Thinking…”. The code includes logging and fallbacks to aid further debugging.
+- Mentor now uses Lichess Cloud Eval exclusively (no local engine). You get best move, evaluation, top PVs in SAN, with beginner-friendly formatting and controls.
+
+Housekeeping:
+- Local Stockfish-specific code, worker wrappers, and copy scripts are no longer used. The dependency on `stockfish` has been removed from package.json. You can safely delete any remaining files under `public/engine/` if present.
 
 If you encounter different behavior, please capture the first 15–20 "[Stockfish] ..." console lines and the Network tab entries for `/engine/*` requests and open an issue.

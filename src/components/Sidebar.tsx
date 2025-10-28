@@ -7,7 +7,6 @@ import {
   Square,
   Home,
   Copy,
-  Camera,
   Crosshair,
   Wand2,
   Send,
@@ -28,7 +27,6 @@ export default function Sidebar() {
   const dispatch = useAppDispatch();
   const { isPlaying, statusMessage } = useAppSelector((state) => state.ui);
   const { fen, pgn } = useAppSelector((state) => state.game);
-  // Mentor analysis handled by MentorPanel; no state needed here
 
   const [manualMove, setManualMove] = useState('');
 
@@ -116,7 +114,6 @@ export default function Sidebar() {
     }
   };
 
-  // Mentor toggle removed in new approach
 
   return (
     <div className="w-80 bg-slate-800 border-l border-slate-700 flex flex-col h-full overflow-y-auto">
@@ -124,10 +121,6 @@ export default function Sidebar() {
         <h2 className="text-xl font-bold text-white mb-4">Controls</h2>
 
         <div className="space-y-3">
-          <button className="w-full flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition">
-            <Camera className="w-4 h-4" />
-            Select Device
-          </button>
 
           <button
             onClick={handleFindCorners}
