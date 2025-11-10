@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import type { CornersPayload } from '../types/index';
 
 interface Position {
   x: number;
@@ -33,11 +34,16 @@ const cornersSlice = createSlice({
     ) => {
       state.positions[action.payload.corner] = action.payload.position;
     },
+    // Bulk/set from detection pipeline
+    cornersSet: (state, action: PayloadAction<CornersPayload>) => {
+      const { key, xy } = action.payload;
+      state.positions[key] = xy;
+    },
     resetCorners: (state) => {
       state.positions = initialState.positions;
     },
   },
 });
 
-export const { updateCornerPosition, resetCorners } = cornersSlice.actions;
+export const { updateCornerPosition, cornersSet, resetCorners } = cornersSlice.actions;
 export default cornersSlice.reducer;

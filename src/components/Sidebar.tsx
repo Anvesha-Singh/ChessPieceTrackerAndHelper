@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Chess } from 'chess.js';
+import { GraphModel } from '@tensorflow/tfjs-converter';
 import {
   Play,
   Pause,
@@ -10,29 +11,47 @@ import {
   Crosshair,
   Wand2,
   Send,
+  Loader,
 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { togglePlaying, setStatusMessage } from '../store/uiSlice';
 import { resetGame, setGameState } from '../store/gameSlice';
-import { resetCorners } from '../store/cornersSlice';
 import ChessBoard from './ChessBoard';
 import { MentorPanel } from './MentorPanel';
+import { findCorners } from '../utils/findCorners';
+
+interface SidebarProps {
+  piecesModelRef?: React.RefObject<GraphModel | null>;
+  xcornersModelRef?: React.RefObject<GraphModel | null>;
+  videoRef?: React.RefObject<HTMLVideoElement>;
+  canvasRef?: React.RefObject<HTMLCanvasElement>;
+}
 
 const mockMoves = [
   'e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'd3', 'Nf6', 'Nc3', 'd6'
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  piecesModelRef,
+  xcornersModelRef,
+  videoRef,
+  canvasRef,
+}: SidebarProps) {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
   const { isPlaying, statusMessage } = useAppSelector((state) => state.ui);
   const { fen, pgn } = useAppSelector((state) => state.game);
 
   const [manualMove, setManualMove] = useState('');
+  const [isFindingCorners, setIsFindingCorners] = useState(false);
 
   const handlePlayPause = () => {
+    if (!isPlaying) {
+      dispatch(setStatusMessage('Recording...'));
+    } else {
+      dispatch(setStatusMessage('Paused'));
+    }
     dispatch(togglePlaying());
-    dispatch(setStatusMessage(isPlaying ? 'Paused' : 'Recording...'));
   };
 
   const handleStop = () => {
@@ -40,9 +59,33 @@ export default function Sidebar() {
     dispatch(setStatusMessage('Ready to record'));
   };
 
-  const handleFindCorners = () => {
-    dispatch(resetCorners());
-    dispatch(setStatusMessage('Corners reset to default positions'));
+  const handleFindCorners = async () => {
+    if (isFindingCorners || !piecesModelRef?.current || !xcornersModelRef?.current) {
+      dispatch(setStatusMessage('Models not ready or already detecting corners'));
+      return;
+    }
+
+    setIsFindingCorners(true);
+    dispatch(setStatusMessage('Finding board corners...'));
+
+    try {
+      await findCorners(
+        piecesModelRef,
+        xcornersModelRef,
+        videoRef,
+        canvasRef,
+        dispatch,
+        (message: string) => {
+          dispatch(setStatusMessage(message));
+        }
+      );
+      dispatch(setStatusMessage('Corners found successfully'));
+    } catch (error) {
+      console.error('Error finding corners:', error);
+      dispatch(setStatusMessage('Error finding corners - please try again'));
+    } finally {
+      setIsFindingCorners(false);
+    }
   };
 
   const handleSimulateMove = () => {
@@ -56,7 +99,7 @@ export default function Sidebar() {
 
     const randomMove = mockMoves[Math.floor(Math.random() * mockMoves.length)];
     const validMoves = chess.moves();
-    const moveToMake = validMoves.find(m => m.startsWith(randomMove)) || validMoves[0];
+    const moveToMake = validMoves.find((m) => m.startsWith(randomMove)) || validMoves[0];
 
     chess.move(moveToMake);
     const newFen = chess.fen();
@@ -83,16 +126,14 @@ export default function Sidebar() {
 
       if (result) {
         const newFen = chess.fen();
-        // Build PGN text ourselves to avoid headers/FEN blocks
-        const san = result.san; // e.g. e4, Nf3, ...
-        let newPgn = pgn || '';
-        // Determine if we need to prepend move number (when it's White's move that just played)
-        const moveNumber = chess.history().length % 2 === 1 ? Math.ceil(chess.history().length / 2) : Math.ceil(chess.history().length / 2);
+        const san = result.san;
+        const moveNumber = Math.ceil(chess.history().length / 2);
         const isWhiteMove = result.color === 'w';
+
+        let newPgn = pgn || '';
         if (!newPgn) {
           newPgn = isWhiteMove ? `${moveNumber}. ${san}` : `${moveNumber}... ${san}`;
         } else {
-          // add space and appropriate move number if black starts a new pair
           const needsNumber = !isWhiteMove;
           newPgn = `${newPgn} ${needsNumber ? `${moveNumber}... ` : ''}${san}`.trim();
         }
@@ -114,20 +155,28 @@ export default function Sidebar() {
     }
   };
 
-
   return (
     <div className="w-80 bg-slate-800 border-l border-slate-700 flex flex-col h-full overflow-y-auto">
       <div className="p-4 border-b border-slate-700">
         <h2 className="text-xl font-bold text-white mb-4">Controls</h2>
 
         <div className="space-y-3">
-
           <button
             onClick={handleFindCorners}
-            className="w-full flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition"
+            disabled={isFindingCorners || !xcornersModelRef?.current}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:bg-slate-800 disabled:cursor-not-allowed text-white rounded-lg transition"
           >
-            <Crosshair className="w-4 h-4" />
-            Find Corners
+            {isFindingCorners ? (
+              <>
+                <Loader className="w-4 h-4 animate-spin" />
+                Detecting...
+              </>
+            ) : (
+              <>
+                <Crosshair className="w-4 h-4" />
+                Find Corners
+              </>
+            )}
           </button>
 
           <div className="flex gap-2">

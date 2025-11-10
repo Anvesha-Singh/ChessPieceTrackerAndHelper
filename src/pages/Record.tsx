@@ -1,20 +1,30 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { GraphModel } from '@tensorflow/tfjs-converter';
 import VideoCanvas from '../components/VideoCanvas';
 import Sidebar from '../components/Sidebar';
 import { AlertCircle } from 'lucide-react';
 
-export default function Record() {
+interface RecordProps {
+  piecesModelRef: React.RefObject<GraphModel | null>;
+  xcornersModelRef: React.RefObject<GraphModel | null>;
+}
+
+export default function Record({ piecesModelRef, xcornersModelRef }: RecordProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
   useEffect(() => {
     const checkOrientation = () => {
       const isPortrait = window.innerHeight > window.innerWidth;
       const isMobile = window.innerWidth < 768;
 
-      if (isPortrait && isMobile) {
-        const warning = document.getElementById('orientation-warning');
-        if (warning) warning.classList.remove('hidden');
-      } else {
-        const warning = document.getElementById('orientation-warning');
-        if (warning) warning.classList.add('hidden');
+      const warning = document.getElementById('orientation-warning');
+      if (warning) {
+        if (isPortrait && isMobile) {
+          warning.classList.remove('hidden');
+        } else {
+          warning.classList.add('hidden');
+        }
       }
     };
 
@@ -35,7 +45,9 @@ export default function Record() {
         className="hidden bg-yellow-500 text-slate-900 px-4 py-3 flex items-center gap-2 justify-center"
       >
         <AlertCircle className="w-5 h-5" />
-        <span className="font-semibold">Please rotate your device to landscape mode for the best experience</span>
+        <span className="font-semibold">
+          Please rotate your device to landscape mode for the best experience
+        </span>
       </div>
 
       <header className="border-b border-slate-700 bg-slate-900/50 backdrop-blur-sm">
@@ -46,9 +58,14 @@ export default function Record() {
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 p-4">
-          <VideoCanvas />
+          <VideoCanvas piecesModelRef={piecesModelRef} xcornersModelRef={xcornersModelRef} />
         </div>
-        <Sidebar />
+        <Sidebar
+          piecesModelRef={piecesModelRef}
+          xcornersModelRef={xcornersModelRef}
+          videoRef={videoRef}
+          canvasRef={canvasRef}
+        />
       </div>
     </div>
   );

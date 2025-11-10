@@ -123,11 +123,11 @@ export function MentorPanel() {
   return (
     <div className="p-4 bg-slate-800 rounded-lg mt-4">
       <h3 className="text-lg font-bold text-white mb-2">Mentor Analysis</h3>
-      <div className="mb-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-        <div className="flex flex-col sm:flex-col md:flex-row md:items-center gap-1 md:gap-2 min-w-0">
+      <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+        <div className="flex flex-col gap-1 min-w-0">
           <label className="text-slate-400 whitespace-nowrap">Perspective</label>
           <select
-            className="bg-slate-700 text-white rounded px-2 py-1 w-full md:w-auto"
+            className="bg-slate-700 text-white rounded px-2 py-1 w-full"
             value={perspective}
             onChange={(e) => setPerspective(e.target.value as 'white' | 'side')}
             aria-label="Evaluation perspective"
@@ -136,10 +136,10 @@ export function MentorPanel() {
             <option value="side">Side to move</option>
           </select>
         </div>
-        <div className="flex flex-col sm:flex-col md:flex-row md:items-center gap-1 md:gap-2 min-w-0">
+        <div className="flex flex-col gap-1 min-w-0">
           <label className="text-slate-400 whitespace-nowrap">Lines</label>
           <select
-            className="bg-slate-700 text-white rounded px-2 py-1 w-full md:w-auto"
+            className="bg-slate-700 text-white rounded px-2 py-1 w-full"
             value={multiPv}
             onChange={(e) => setMultiPv(parseInt(e.target.value, 10))}
             aria-label="Number of lines (MultiPV)"
@@ -149,10 +149,10 @@ export function MentorPanel() {
             <option value={5}>5</option>
           </select>
         </div>
-        <div className="flex flex-col sm:flex-col md:flex-row md:items-center gap-1 md:gap-2 min-w-0">
+        <div className="flex flex-col gap-1 min-w-0">
           <label className="text-slate-400 whitespace-nowrap">Preview length</label>
           <select
-            className="bg-slate-700 text-white rounded px-2 py-1 w-full md:w-auto"
+            className="bg-slate-700 text-white rounded px-2 py-1 w-full"
             value={variationPlies}
             onChange={(e) => setVariationPlies(parseInt(e.target.value, 10))}
             aria-label="Variation preview length (plies)"
