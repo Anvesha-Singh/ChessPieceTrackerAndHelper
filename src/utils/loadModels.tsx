@@ -35,13 +35,15 @@ export async function loadModels(
   console.log(`📦 Loading quantized models from public root...`);
     const loadStart = performance.now();
 
+    // NOTE: Assets placed under Vite's public/ directory are served from the root.
+    // So the correct URL is "/pieces_model/model.json" (no leading "public/").
     const piecesModel: GraphModel = await loadGraphModel(
-      "pieces_model/model.json"
+      "/pieces_model/model.json"
     );
     console.log("✓ Pieces model loaded");
 
     const xcornersModel: GraphModel = await loadGraphModel(
-      "xcorners_model/model.json"
+      "/xcorners_model/model.json"
     );
     console.log("✓ XCorners model loaded");
 
@@ -72,10 +74,10 @@ export async function loadModels(
   } catch (error) {
     console.error("❌ Failed to load models:", error);
 
-    // Try fallback to unquantized models
-    console.log("📥 Attempting fallback to unquantized models...");
-    const piecesModel = await loadGraphModel("pieces_model/model.json");
-    const xcornersModel = await loadGraphModel("xcorners_model/model.json");
+  // Try fallback to relative (legacy) paths if root URLs failed (e.g. in non-Vite env)
+  console.log("📥 Attempting fallback to legacy relative model paths...");
+  const piecesModel = await loadGraphModel("pieces_model/model.json");
+  const xcornersModel = await loadGraphModel("xcorners_model/model.json");
 
     piecesModelRef.current = piecesModel;
     xcornersModelRef.current = xcornersModel;
